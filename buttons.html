@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>88x31 Buttons</title>
+<style>
+  :root {
+    --bg: #f4f1ea;
+    --panel: #ffffff;
+    --ink: #1d1b22;
+    --muted: #6b6775;
+    --line: #ddd8cc;
+    --accent: #7b5cff;
+    --ok: #1f9d55;
+    --code-bg: #f0ede6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #15141a;
+      --panel: #1e1c25;
+      --ink: #efedf5;
+      --muted: #9b97a8;
+      --line: #2f2c39;
+      --accent: #a28bff;
+      --ok: #4ade80;
+      --code-bg: #24212d;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #15141a;
+    --panel: #1e1c25;
+    --ink: #efedf5;
+    --muted: #9b97a8;
+    --line: #2f2c39;
+    --accent: #a28bff;
+    --ok: #4ade80;
+    --code-bg: #24212d;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 960px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); margin: 0 0 24px; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+  }
+  .card {
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 18px 12px 12px;
+    cursor: pointer;
+    font: inherit; color: inherit; text-align: center;
+    transition: border-color .15s, transform .15s;
+  }
+  .card:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .card img {
+    width: 176px; height: 62px;           /* 2x so the pixels are visible */
+    image-rendering: pixelated;
+    display: block;
+  }
+  .name { font-size: 13px; color: var(--muted); }
+  .card.done { border-color: var(--ok); }
+  .card.done .name { color: var(--ok); }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%) translateY(20px);
+    background: var(--ink); color: var(--bg);
+    padding: 10px 16px; border-radius: 8px; font-size: 14px;
+    opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s;
+    max-width: calc(100% - 32px);
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  .last {
+    margin-top: 24px; padding: 12px; border-radius: 8px;
+    background: var(--code-bg); border: 1px solid var(--line);
+    font: 12px/1.5 ui-monospace, "JetBrains Mono", monospace;
+    word-break: break-all; color: var(--muted);
+  }
+  .last:empty { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>88x31 Buttons</h1>
+  <p class="sub">Click a button to copy its <code>&lt;img&gt;</code> tag and download the GIF.</p>
+
+  <div class="grid" id="grid"></div>
+  <div class="last" id="last"></div>
+</main>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+  // Raw permalinks pinned to a commit, so they never change or break.
+  const BASE = "https://raw.githubusercontent.com/wypiek/assets/eb182088390a65f253d4fbfb1c24522cc3061485/";
+
+  const BUTTONS = [
+    { file: "helium_btw.gif",    alt: "i use helium btw :>" },
+    { file: "firefox_btw.gif",   alt: "i use firefox btw :>" },
+    { file: "claudemaxxing.gif", alt: "claudemaxxing…" },
+    { file: "i_heart_pond.gif",  alt: "I ❤️ Pond" },
+    { file: "equicord.gif",      alt: "Equicord" },
+    { file: "xitter.gif",        alt: "Xitter" },
+    { file: "meowcord.gif",      alt: "meowcord" },
+    { file: "eu_domain.gif",     alt: "not official EU domain! owned by m5rcel – european-commission-europa.eu" },
+    { file: "zen247.gif",        alt: "i use zen 24/7" },
+    { file: "php_beloved.gif",   alt: "PHP my beloved" },
+    { file: "vivaldi.gif",       alt: "i love vivaldi" },
+    { file: "fuck_apple.gif",    alt: "FUCK APPLE!" },
+  ];
+
+  const esc = s => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const tagFor = b => `<img src="${BASE}${b.file}" width="88" height="31" alt="${esc(b.alt)}">`;
+
+  const grid = document.getElementById("grid");
+  const toastEl = document.getElementById("toast");
+  const lastEl = document.getElementById("last");
+  let toastTimer;
+
+  function toast(msg) {
+    toastEl.textContent = msg;
+    toastEl.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toastEl.classList.remove("show"), 2200);
+  }
+
+  async function copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (e) {
+      // Fallback for file:// pages and older browsers
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      let ok = false;
+      try { ok = document.execCommand("copy"); } catch (e2) {}
+      ta.remove();
+      return ok;
+    }
+  }
+
+  async function download(b) {
+    const url = BASE + b.file;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(res.status);
+      const blob = await res.blob();
+      const obj = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = obj; a.download = b.file;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(obj), 2000);
+      return true;
+    } catch (e) {
+      // If fetching is blocked, open the raw file so it can be saved manually
+      window.open(url, "_blank", "noopener");
+      return false;
+    }
+  }
+
+  for (const b of BUTTONS) {
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "card";
+    card.title = "Copy <img> tag and download " + b.file;
+    card.innerHTML = `<img src="${BASE}${b.file}" width="88" height="31" alt="${esc(b.alt)}"><span class="name">${esc(b.file)}</span>`;
+    card.addEventListener("click", async () => {
+      const tag = tagFor(b);
+      const [copied, downloaded] = await Promise.all([copyText(tag), download(b)]);
+      lastEl.textContent = tag;
+      card.classList.add("done");
+      setTimeout(() => card.classList.remove("done"), 1500);
+      toast(
+        (copied ? "Copied <img> tag" : "Couldn't copy, tag shown below") +
+        (downloaded ? " · downloading " + b.file : " · opened GIF in new tab")
+      );
+    });
+    grid.appendChild(card);
+  }
+</script>
+</body>
+</html>
