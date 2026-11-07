@@ -44,8 +44,8 @@ offset   chunk   contents
 0        -       PNG signature  89 50 4E 47 0D 0A 1A 0A
 8        IHDR    1280x1280, RGB
 33       pdFh    HTML loader + start of the PDF
-378      IDAT    the PNG picture (step 1)
-147805   pdFt    the rest of the PDF: both HTML pages, then the step 2 picture
+344      IDAT    the PNG picture (step 1)
+147771   pdFt    the rest of the PDF: the HTML pages, then the step 2 picture
 (end)    IEND    end of PNG
 </pre>
 
@@ -55,7 +55,7 @@ HTML and PDF readers don't care about chunks at all and just see the bytes insid
 <h2>3. The PDF part</h2>
 
 <p>PDF readers don't require <code>%PDF</code> to be at byte 0. Most of them search the first
-1024 bytes for it. In this file it is at byte 319, inside <code>pdFh</code>.</p>
+1024 bytes for it. In this file it is at byte 285, inside <code>pdFh</code>.</p>
 
 <p>The PNG picture sits <i>between</i> the two PDF chunks, so the PDF has to step over it.
 The <code>pdFh</code> chunk ends by opening a dummy object:</p>
@@ -72,7 +72,7 @@ the CRC of <code>pdFh</code>, the whole <code>IDAT</code> chunk, and the length 
 The PDF reader treats all of that as the content of an unused object and ignores it.</p>
 
 <p>The <code>pdFt</code> chunk then begins with <code>endstream endobj</code> and contains the real PDF:
-an unused object holding the two HTML pages, a catalog, one page, the "rename it to .html" picture as a
+an unused object holding the HTML pages, a catalog, one page, the "rename it to .html" picture as a
 JPEG, the cross-reference table and <code>%%EOF</code>. Only the 12-byte <code>IEND</code> chunk comes
 after it, so readers that look for <code>%%EOF</code> near the end of the file still find it.</p>
 
@@ -84,43 +84,41 @@ table themselves.</p>
 
 <p>When a local file ends in <code>.html</code> or <code>.htm</code>, the browser treats it as HTML
 whatever it contains. Browsers are very forgiving: binary bytes are just shown as junk text, and any
-tags found among them still work. Inside <code>pdFh</code>, before the PDF header, is a small loader:</p>
+tags found among them still work. Inside <code>pdFh</code>, before the PDF header, is:</p>
 
 <pre>
 &lt;html&gt;&lt;head&gt;
 &lt;meta charset="iso-8859-1"&gt;
-&lt;style&gt;body{visibility:hidden}&lt;/style&gt;
-&lt;script&gt;
-addEventListener("DOMContentLoaded", function () {
-  var e = document.getElementById(/\.htm$/i.test(location.pathname) ? "x" : "m");
-  document.documentElement.innerHTML = e.textContent;
-})
-&lt;/script&gt;
+&lt;title&gt;Almost there&lt;/title&gt;
+&lt;style&gt;body{font-size:0;color:transparent} ...&lt;/style&gt;
 &lt;/head&gt;&lt;body&gt;
+&lt;text-area hidden&gt;
 </pre>
 
 <ul>
 <li>The <code>iso-8859-1</code> charset makes every byte a valid character, so the binary data can't break parsing.</li>
-<li><code>visibility:hidden</code> hides the junk text while the file loads.</li>
-<li>Once the whole file is parsed, the script picks a page and replaces everything with it.</li>
+<li><code>font-size:0</code> hides the few junk bytes of the PNG header that come before it.</li>
+<li>A hidden text area (spelled with a hyphen here so this page can be stored inside the file) swallows
+everything after it as plain text, so the PDF header and the PNG pixels are never shown and can't be mistaken for tags.
+Only its own closing tag can end it.</li>
 </ul>
 
-<p>The two pages are stored near the start of <code>pdFt</code>, inside an unused PDF object, as</p>
+<p>Near the start of <code>pdFt</code>, inside an unused PDF object, the text area is closed and the
+real content follows: a style block, a <code>div</code> with the "remove the letter l" message, a hidden
+<code>div</code> with this page, a tiny script, and a new hidden text area that swallows the rest of the
+file (the JPEG and the PDF tables).</p>
 
-<pre>
-&lt;script type="text/plain" id="m"&gt; ...the "remove the letter l" page... &lt;/script&gt;
-&lt;script type="text/plain" id="x"&gt; ...this page... &lt;/script&gt;
-</pre>
-
-<p>A script with <code>type="text/plain"</code> isn't run. The browser just keeps its text, which the loader
-reads with <code>textContent</code>.</p>
+<p>No JavaScript is needed to see the message, so it also shows in previews that don't run scripts.</p>
 
 <h2>5. .html vs .htm</h2>
 
 <p>Browsers treat <code>.html</code> and <code>.htm</code> exactly the same, so the file can't tell them apart
-by how it's parsed. Instead, the loader looks at its own address: <code>location.pathname</code> is the path
-of the open file, like <code>/Users/you/Downloads/special.htm</code>. If it ends in <code>.htm</code>
-it shows this page; otherwise it shows the message telling you to remove the <code>l</code>.</p>
+by how it's parsed. Instead, a one-line script looks at its own address: <code>location.pathname</code> is
+the path of the open file, like <code>/Users/you/Downloads/special.htm</code>. If it ends in <code>.htm</code>,
+it hides the message and shows this page.</p>
+
+<p>This step does need JavaScript. Some previews (like the iPhone Files app's Quick Look) don't run
+scripts, so there the <code>.htm</code> file still shows the message. Open it in a real browser instead.</p>
 
 <h2>6. Why there is no .gif step</h2>
 
@@ -139,7 +137,7 @@ as a file attachment or inside a .zip.</p>
 <pre>python3 build_polyglot.py step1.png step2.png special.png</pre>
 
 <p>The script re-encodes <code>step1.png</code> into chunks it controls, converts <code>step2.png</code> to
-a JPEG for the PDF page, inserts the HTML loader and pages, works out the <code>/Length</code> and
+a JPEG for the PDF page, inserts the HTML, works out the <code>/Length</code> and
 cross-reference offsets, and writes the chunks in the order shown above with correct CRCs.</p>
 
 </body>

@@ -30,11 +30,9 @@ iend = chunk(b"IEND", b"")
 # --- HTML bootstrap (must fit, with the PDF header, in the first 1024 bytes) ---
 # Hides the binary junk, then swaps the whole page for one of two payloads
 # depending on whether the file name ends in .htm or .html.
-boot = (b'<html><head><meta charset="iso-8859-1"><style>body{visibility:hidden}</style><script>'
-        b'addEventListener("DOMContentLoaded",function(){'
-        b'var e=document.getElementById(/\\.htm$/i.test(location.pathname)?"x":"m");'
-        b'document.documentElement.innerHTML=e.textContent})'
-        b'</script></head><body>\n')
+boot = (b'<html><head><meta charset="iso-8859-1"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Almost there</title>'
+        b'<style>body{font-size:0;color:transparent;margin:0}textarea{display:none}</style></head><body>'
+        b'<textarea hidden>')  # everything up to </textarea> (PDF header, PNG pixels) is hidden text
 
 # --- Early chunk: HTML bootstrap + PDF header + a dummy stream that
 # swallows the PNG bytes in between (CRC, IDAT, next chunk header). ---
@@ -50,26 +48,30 @@ pdft_off = idat_off + len(idat)
 late_rel = len(early_data) - len(boot) + swallowed  # late data start, relative to %PDF
 
 # --- HTML payloads ---
-def page(title, style, body):
-    return f"<head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'><title>{title}</title><style>{style}</style></head><body>{body}</body>"
-
-message = page("Almost there",
-               "html,body{height:100%;margin:0}body{display:flex;align-items:center;justify-content:center;"
-               "font:bold 8vmin sans-serif;text-align:center;padding:1em;box-sizing:border-box}",
-               "<p>Now remove the letter <span style='color:red'>l</span> from html.</p>")
 
 tmpl = open(os.path.join(here, "explainer_template.html"), encoding="utf-8").read()
 for k, v in {"PDF_START": pdf_start, "PDFH_OFF": 33, "IDAT_OFF": idat_off, "PDFT_OFF": pdft_off,
              "LENGTH": swallowed}.items():
     tmpl = tmpl.replace("{{" + k + "}}", str(v))
 explainer_full = tmpl
-explainer = tmpl[tmpl.index("<head>"):tmpl.index("</html>")]  # inner part, goes into documentElement
 
-def payload(pid, html):
-    assert "</script" not in html.lower()
-    return f'<script type="text/plain" id="{pid}">{html}</script>\n'.encode("ascii", "xmlcharrefreplace")
-
-payload_stream = payload("m", message) + payload("x", explainer)
+body = tmpl[tmpl.index("<body>") + 6:tmpl.index("</body>")]
+page_html = (
+    "</textarea><style>"
+    "#m{font:bold 8vmin sans-serif;color:#000;min-height:100vh;display:flex;align-items:center;"
+    "justify-content:center;text-align:center;padding:1em;box-sizing:border-box}"
+    "#x{font:16px/1.5 sans-serif;color:#000;max-width:46em;margin:1em auto;padding:0 1em}"
+    "#x pre{overflow-x:auto}#x table{border-collapse:collapse}"
+    "#x table{font-size:16px;color:#000}#x td,#x th{border:1px solid #999;padding:.25em .5em;text-align:left}"
+    "</style>"
+    "<div id='m'><p>Now remove the letter <span style='color:red'>l</span> from html.</p></div>"
+    "<div id='x' style='display:none'>" + body + "</div>"
+    "<script>if(/\\.htm$/i.test(location.pathname)){document.getElementById('m').style.display='none';"
+    "document.getElementById('x').style.display='block';document.title='How special.png works'}</script>"
+    "<textarea hidden>"  # hide the rest of the file (JPEG, xref)
+)
+assert "textarea" not in body.lower()
+payload_stream = page_html.encode("ascii", "xmlcharrefreplace")
 
 # --- PDF objects ---
 pdf_img = Image.open(pdf_src).convert("RGB")
