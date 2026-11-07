@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How special.png works</title>
+<style>
+  body { max-width: 46em; margin: 1em auto; padding: 0 1em; font-family: sans-serif; line-height: 1.5; }
+  pre { overflow-x: auto; }
+  table { border-collapse: collapse; }
+  td, th { border: 1px solid #999; padding: 0.25em 0.5em; text-align: left; }
+</style>
+</head>
+<body>
+
+<h1>How special.png works</h1>
+
+<p><code>special.png</code> is a <b>polyglot</b>: one file that is valid as three formats at once.
+Renaming it does not change any bytes. It only changes which program opens it, and each program reads
+the part it understands and ignores the rest.</p>
+
+<table>
+<tr><th>Name</th><th>Opened by</th><th>What you see</th></tr>
+<tr><td>.png</td><td>image viewer</td><td>"Hey you! Save this image and rename it to .pdf"</td></tr>
+<tr><td>.pdf</td><td>PDF reader</td><td>"Great! Now rename it to .html"</td></tr>
+<tr><td>.html</td><td>web browser</td><td>redirect to https://twitter.democrat</td></tr>
+</table>
+
+<h2>1. The PNG part</h2>
+
+<p>A PNG file is an 8-byte signature followed by <i>chunks</i>. Each chunk is:</p>
+<pre>[length: 4 bytes] [type: 4 letters] [data] [CRC: 4 bytes]</pre>
+
+<p>The chunks that matter are <code>IHDR</code> (size and colour type), <code>IDAT</code> (the compressed
+pixels) and <code>IEND</code> (end of file). A chunk type that starts with a lowercase letter is
+"ancillary": if a viewer doesn't recognise it, it skips it using the length field.
+So we can hide anything in custom chunks, and every image viewer will still show the first picture.</p>
+
+<h2>2. The file layout</h2>
+
+<pre>
+offset   chunk   contents
+0        -       PNG signature  89 50 4E 47 0D 0A 1A 0A
+8        IHDR    1280x1280, RGB
+33       pdFh    HTML redirect + start of the PDF
+354      IDAT    the PNG picture (step 1)
+147781   pdFt    the rest of the PDF (with the step 2 picture)
+241059   IEND    end of PNG
+</pre>
+
+<p><code>pdFh</code> and <code>pdFt</code> are made-up chunk names. The viewer skips them, but the
+HTML and PDF readers don't care about chunks at all and just see the bytes inside.</p>
+
+<h2>3. The PDF part</h2>
+
+<p>PDF readers don't require <code>%PDF</code> to be at byte 0. Most of them search the first
+1024 bytes for it. In this file it is at byte 295, inside <code>pdFh</code>.</p>
+
+<p>The PNG picture sits <i>between</i> the two PDF chunks, so the PDF has to step over it.
+The <code>pdFh</code> chunk ends by opening a dummy object:</p>
+
+<pre>
+%PDF-1.4
+1 0 obj
+&lt;&lt; /Length 147439 &gt;&gt;
+stream
+</pre>
+
+<p>That <code>/Length</code> is exactly the number of bytes up to the start of the <code>pdFt</code> data:
+the CRC of <code>pdFh</code>, the whole <code>IDAT</code> chunk, and the length and type of <code>pdFt</code>.
+The PDF reader treats all of that as the content of an unused object and ignores it.</p>
+
+<p>The <code>pdFt</code> chunk then begins with <code>endstream endobj</code> and contains the real PDF:
+a catalog, one page, the "rename it to .html" picture as a JPEG, the cross-reference table and
+<code>%%EOF</code>. Only the 12-byte <code>IEND</code> chunk comes after it, so readers that look for
+<code>%%EOF</code> near the end of the file still find it.</p>
+
+<p>The cross-reference offsets are counted from <code>%PDF</code>, not from byte 0. This matches how
+Acrobat and Chrome handle a header that doesn't start the file. Readers that disagree rebuild the
+table themselves.</p>
+
+<h2>4. The HTML part</h2>
+
+<p>When a local file ends in <code>.html</code>, the browser treats it as HTML whatever it contains.
+Browsers are very forgiving: the PNG bytes before the first tag are just shown as junk text.
+Also inside <code>pdFh</code>, before the PDF header, is:</p>
+
+<pre>
+&lt;html&gt;&lt;head&gt;
+&lt;meta charset="iso-8859-1"&gt;
+&lt;meta http-equiv="refresh" content="0;url=https://twitter.democrat"&gt;
+&lt;script&gt;location.replace('https://twitter.democrat')&lt;/script&gt;
+&lt;style&gt;html,body{background:#fff;color:#fff;overflow:hidden}&lt;/style&gt;
+&lt;/head&gt;&lt;body&gt;&lt;!--
+</pre>
+
+<ul>
+<li>The script redirects immediately. The meta refresh is a backup if scripts are off.</li>
+<li>The <code>iso-8859-1</code> charset makes every byte a valid character, so the binary data can't break parsing.</li>
+<li>White text on white hides the junk for the moment before the redirect.</li>
+<li><code>&lt;!--</code> opens a comment so the rest of the file (the image and PDF data) is not rendered as text.</li>
+</ul>
+
+<h2>5. Why there is no .gif step</h2>
+
+<p>A PNG must start with <code>89 50 4E 47</code> and a GIF must start with <code>GIF89a</code>.
+A file has only one byte 0, so it can't be both. Most image viewers also check the content rather than
+the name, so a PNG renamed to .gif would show the same picture as the .png step.</p>
+
+<h2>6. Building it</h2>
+
+<pre>python3 build_polyglot.py step1.png step2.png special.png https://twitter.democrat</pre>
+
+<p>The script re-encodes <code>step1.png</code> into chunks it controls, converts <code>step2.png</code> to
+a JPEG for the PDF page, works out the <code>/Length</code> and cross-reference offsets, and writes
+the chunks in the order shown above with correct CRCs.</p>
+
+</body>
+</html>
