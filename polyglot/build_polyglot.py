@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Build a PNG/PDF/HTML polyglot (with a GIF embedded as a PDF attachment).
+"""Build a PNG/PDF/HTML polyglot.
 
-Usage: build_polyglot.py first.png second.png gif_stage_image out.png redirect_url
+As .png it shows first.png, as .pdf it shows second.png, as .html it redirects.
+
+Usage: build_polyglot.py first.png second.png out.png redirect_url
 """
 import io, struct, sys, zlib
 from PIL import Image
 
-png_src, pdf_src, gif_src, out, url = sys.argv[1:6]
+png_src, pdf_src, out, url = sys.argv[1:5]
 
 def chunk(ctype, data):
     return struct.pack(">I", len(data)) + ctype + data + struct.pack(">I", zlib.crc32(ctype + data) & 0xFFFFFFFF)
@@ -25,8 +27,6 @@ pdf_img = Image.open(pdf_src).convert("RGB")
 pw, ph = pdf_img.size
 jbuf = io.BytesIO(); pdf_img.save(jbuf, "JPEG", quality=92)
 jpeg = jbuf.getvalue()
-gbuf = io.BytesIO(); Image.open(gif_src).save(gbuf, "GIF", save_all=True)
-gif = gbuf.getvalue()
 # HTML redirect, read by browsers when the file is opened as .html
 html = (f'<html><head><meta charset="iso-8859-1"><meta http-equiv="refresh" content="0;url={url}">'
         f'<script>location.replace({url!r})</script>'
@@ -48,13 +48,11 @@ late_rel = len(early_data) - html_len + swallowed
 
 objs = []
 content = f"q {pw} 0 0 {ph} 0 0 cm /Im0 Do Q".encode()
-objs.append(b"<< /Type /Catalog /Pages 3 0 R /Names << /EmbeddedFiles << /Names [(next-step.gif) 7 0 R] >> >> /PageMode /UseAttachments >>")
+objs.append(b"<< /Type /Catalog /Pages 3 0 R >>")
 objs.append(b"<< /Type /Pages /Kids [4 0 R] /Count 1 >>")
 objs.append(f"<< /Type /Page /Parent 3 0 R /MediaBox [0 0 {pw} {ph}] /Contents 5 0 R /Resources << /XObject << /Im0 6 0 R >> >> >>".encode())
 objs.append(b"<< /Length %d >>\nstream\n" % len(content) + content + b"\nendstream")
 objs.append(f"<< /Type /XObject /Subtype /Image /Width {pw} /Height {ph} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length {len(jpeg)} >>\nstream\n".encode() + jpeg + b"\nendstream")
-objs.append(b"<< /Type /Filespec /F (next-step.gif) /UF (next-step.gif) /EF << /F 8 0 R >> >>")
-objs.append(b"<< /Type /EmbeddedFile /Subtype /image#2Fgif /Length %d >>\nstream\n" % len(gif) + gif + b"\nendstream")
 
 late = bytearray(b"\nendstream\nendobj\n")
 offsets = {1: len(head_prefix) - len(b"1 0 obj\n<< /Length ") }
